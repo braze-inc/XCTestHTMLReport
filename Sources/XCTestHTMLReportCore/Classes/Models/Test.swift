@@ -107,23 +107,39 @@ public struct TestGroup: Test {
                 downsizeScaleFactor: downsizeScaleFactor
             ) }
         } else {
-            subTests = Array(group.subtests.reduce(into: Set<TestCase>()) { subTestSet, metadata in
-                let newTest = TestCase(
-                    metadata: metadata,
-                    resultFile: resultFile,
-                    renderingMode: renderingMode,
-                    downsizeImagesEnabled: downsizeImagesEnabled,
-                    downsizeScaleFactor: downsizeScaleFactor
-                )
-                if let index = subTestSet.firstIndex(of: newTest) {
-                    var existingTest = subTestSet[index]
-                    existingTest.iterations.append(contentsOf: newTest.iterations)
-                    subTestSet.update(with: existingTest)
-                } else {
-                    subTestSet.insert(newTest)
+            let dGroup = DispatchGroup()
+            let lock = DispatchSemaphore(value: 1)
+            var tempSubTestSet = Set<TestCase>()
+
+            for metadata in group.subtests {
+                print("Processing test case: \(metadata.name ?? "---test-name-not-found---")")
+                dGroup.enter()
+                queue.async {
+                    let newTest = TestCase(
+                        metadata: metadata,
+                        resultFile: resultFile,
+                        renderingMode: renderingMode,
+                        downsizeImagesEnabled: downsizeImagesEnabled,
+                        downsizeScaleFactor: downsizeScaleFactor
+                    )
+
+                    lock.wait()
+                    if let index = tempSubTestSet.firstIndex(of: newTest) {
+                        var existingTest = tempSubTestSet[index]
+                        existingTest.iterations.append(contentsOf: newTest.iterations)
+                        tempSubTestSet.update(with: existingTest)
+                    } else {
+                        tempSubTestSet.insert(newTest)
+                    }
+                    lock.signal()
+
+                    dGroup.leave()
                 }
-            })
+            }
+            dGroup.wait()
+            subTests = Array(tempSubTestSet)
         }
+
     }
 }
 
@@ -266,3 +282,5 @@ extension TestCase: ContainingAttachment {
         iterations.map(\.allAttachments).reduce([], +)
     }
 }
+
+private let queue = DispatchQueue(label: "cli", qos: .userInitiated, attributes: .concurrent)

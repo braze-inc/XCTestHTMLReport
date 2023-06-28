@@ -21,19 +21,15 @@ public struct Summary {
     public init(resultPaths: [String], renderingMode: RenderingMode, downsizeImagesEnabled: Bool, downsizeScaleFactor: CGFloat) {
         var runs: [Run] = []
         var resultFiles: [ResultFile] = []
-        let semaphore = DispatchSemaphore(value: 1)
 
-        DispatchQueue.concurrentPerform(iterations: resultPaths.count) { i in
-            let resultPath = resultPaths[i]
+        for resultPath in resultPaths {
             Logger.step("Parsing \(resultPath)")
             let url = URL(fileURLWithPath: resultPath)
             let resultFile = ResultFile(url: url)
-            semaphore.wait()
             resultFiles.append(resultFile)
-            semaphore.signal()
             guard let invocationRecord = resultFile.getInvocationRecord() else {
                 Logger.warning("Can't find invocation record for : \(resultPath)")
-                return
+                break
             }
             let resultRuns = invocationRecord.actions.compactMap {
                 Run(
@@ -44,9 +40,7 @@ public struct Summary {
                     downsizeScaleFactor: downsizeScaleFactor
                 )
             }
-            semaphore.wait()
             runs.append(contentsOf: resultRuns)
-            semaphore.signal()
         }
         self.runs = runs
         self.resultFiles = resultFiles
